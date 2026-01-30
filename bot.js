@@ -2,47 +2,61 @@ import { Client, GatewayIntentBits, SlashCommandBuilder } from "discord.js";
 import fetch from "node-fetch";
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
-
-const API_URL = process.env.API_URL;
-const TOKEN = process.env.TOKEN;
 
 client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log("QVA Bot Online");
 
-  const approveCmd = new SlashCommandBuilder()
-    .setName("approve")
-    .setDescription("Approve a pilot application")
-    .addUserOption(option =>
-      option.setName("user").setDescription("User to approve").setRequired(true)
-    );
+  const commands = [
+    new SlashCommandBuilder()
+      .setName("approve")
+      .setDescription("Approve a pilot")
+      .addUserOption(o =>
+        o.setName("user").setDescription("User").setRequired(true)
+      ),
 
-  await client.application.commands.set([approveCmd]);
+    new SlashCommandBuilder()
+      .setName("deny")
+      .setDescription("Deny a pilot")
+      .addUserOption(o =>
+        o.setName("user").setDescription("User").setRequired(true)
+      ),
+
+    new SlashCommandBuilder()
+      .setName("ping")
+      .setDescription("Bot status"),
+  ].map(c => c.toJSON());
+
+  await client.application.commands.set(commands);
 });
 
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+client.on("interactionCreate", async i => {
+  if (!i.isChatInputCommand()) return;
 
-  if (interaction.commandName === "approve") {
-    const user = interaction.options.getUser("user");
+  if (i.commandName === "ping") {
+    return i.reply("Pong ✅");
+  }
 
-    // Give Pilot role
-    const role = interaction.guild.roles.cache.find(r => r.name === "Pilot");
-    if (role) {
-      const member = await interaction.guild.members.fetch(user.id);
-      await member.roles.add(role);
-    }
+  if (i.commandName === "approve") {
+    const member = i.guild.members.cache.get(
+      i.options.getUser("user").id
+    );
+    const role = i.guild.roles.cache.find(r => r.name === "Pilot");
+    await member.roles.add(role);
 
-    // Notify backend (optional logging)
-    await fetch(`${API_URL}/approve`, {
+    await fetch(`${process.env.API_URL}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ discord_id: user.id })
-    }).catch(() => {});
+      body: JSON.stringify({ discordId: member.id }),
+    });
 
-    await interaction.reply(`✅ Approved ${user.username}`);
+    i.reply("✅ Pilot approved");
+  }
+
+  if (i.commandName === "deny") {
+    i.reply("❌ Application denied");
   }
 });
 
-client.login(TOKEN);
+client.login(process.env.TOKEN);
